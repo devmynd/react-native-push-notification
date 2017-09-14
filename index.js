@@ -15,7 +15,8 @@ var Notifications = {
 	handler: RNNotifications,
 	onRegister: false,
 	onError: false,
-	onNotification: false,
+	onLocalNotification: false,
+	onRemoteNotification: false,
   onRemoteFetch: false,
 	isLoaded: false,
 	hasPoppedInitialNotification: false,
@@ -60,8 +61,12 @@ Notifications.configure = function(options: Object) {
 		this.onError = options.onError;
 	}
 
-	if ( typeof options.onNotification !== 'undefined' ) {
-		this.onNotification = options.onNotification;
+	if ( typeof options.onLocalNotification !== 'undefined' ) {
+		this.onLocalNotification = options.onLocalNotification;
+	}
+
+  if ( typeof options.onRemoteNotification !== 'undefined' ) {
+		this.onRemoteNotification = options.onRemoteNotification;
 	}
 
 	if ( typeof options.permissions !== 'undefined' ) {
@@ -78,11 +83,12 @@ Notifications.configure = function(options: Object) {
 
 	if ( this.isLoaded === false ) {
 		this._onRegister = this._onRegister.bind(this);
-		this._onNotification = this._onNotification.bind(this);
+		this._onLocalNotification = this._onLocalNotification.bind(this);
+		this._onRemoteNotification = this._onRemoteNotification.bind(this);
 		this._onRemoteFetch = this._onRemoteFetch.bind(this);
 		this.callNative( 'addEventListener', [ 'register', this._onRegister ] );
-		this.callNative( 'addEventListener', [ 'notification', this._onNotification ] );
-		this.callNative( 'addEventListener', [ 'localNotification', this._onNotification ] );
+		this.callNative( 'addEventListener', [ 'notification', this._onRemoteNotification ] );
+		this.callNative( 'addEventListener', [ 'localNotification', this._onLocalNotification ] );
 		Platform.OS === 'android' ? this.callNative( 'addEventListener', [ 'remoteFetch', this._onRemoteFetch ] ) : null
 
 		this.isLoaded = true;
@@ -92,7 +98,7 @@ Notifications.configure = function(options: Object) {
 			( options.popInitialNotification === undefined || options.popInitialNotification === true ) ) {
 		this.popInitialNotification(function(firstNotification) {
 			if ( firstNotification !== null ) {
-				this._onNotification(firstNotification, true);
+				this._onRemoteNotification(firstNotification, true);
 			}
 		}.bind(this));
 		this.hasPoppedInitialNotification = true;
@@ -107,8 +113,8 @@ Notifications.configure = function(options: Object) {
 /* Unregister */
 Notifications.unregister = function() {
 	this.callNative( 'removeEventListener', [ 'register', this._onRegister ] )
-	this.callNative( 'removeEventListener', [ 'notification', this._onNotification ] )
-	this.callNative( 'removeEventListener', [ 'localNotification', this._onNotification ] )
+	this.callNative( 'removeEventListener', [ 'notification', this._onRemoteNotification ] )
+	this.callNative( 'removeEventListener', [ 'localNotification', this._onLocalNotification ] )
 	Platform.OS === 'android' ? this.callNative( 'removeEventListener', [ 'remoteFetch', this._onRemoteFetch ] ) : null
 	this.isLoaded = false;
 };
@@ -205,7 +211,7 @@ Notifications._onRemoteFetch = function(notificationData: Object) {
 	}
 };
 
-Notifications._onNotification = function(data, isFromBackground = null) {
+Notifications._onLocalNotification = function(data, isFromBackground = null) {
 	if ( isFromBackground === null ) {
 		isFromBackground = (
 			data.foreground === false ||
@@ -213,9 +219,9 @@ Notifications._onNotification = function(data, isFromBackground = null) {
 		);
 	}
 
-	if ( this.onNotification !== false ) {
+	if ( this.onLocalNotification !== false ) {
 		if ( Platform.OS === 'ios' ) {
-			this.onNotification({
+			this.onLocalNotification({
 				foreground: ! isFromBackground,
 				userInteraction: isFromBackground,
 				message: data.getMessage(),
@@ -238,7 +244,45 @@ Notifications._onNotification = function(data, isFromBackground = null) {
 				}
 			}
 
-			this.onNotification(notificationData);
+			this.onLocalNotification(notificationData);
+		}
+	}
+};
+
+Notifications._onRemoteNotification = function(data, isFromBackground = null) {
+	if ( isFromBackground === null ) {
+		isFromBackground = (
+			data.foreground === false ||
+			AppState.currentState === 'background'
+		);
+	}
+
+	if ( this.onRemoteNotification !== false ) {
+		if ( Platform.OS === 'ios' ) {
+			this.onRemoteNotification({
+				foreground: ! isFromBackground,
+				userInteraction: isFromBackground,
+				message: data.getMessage(),
+				data: data.getData(),
+				badge: data.getBadgeCount(),
+				alert: data.getAlert(),
+				sound: data.getSound()
+			});
+		} else {
+			var notificationData = {
+				foreground: ! isFromBackground,
+				...data
+			};
+
+			if ( typeof notificationData.data === 'string' ) {
+				try {
+					notificationData.data = JSON.parse(notificationData.data);
+				} catch(e) {
+					/* void */
+				}
+			}
+
+			this.onRemoteNotification(notificationData);
 		}
 	}
 };
